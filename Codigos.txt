@@ -1,0 +1,133 @@
+SELECT * FROM categorias
+SELECT * FROM productos
+
+--TRIGGERS
+---AUDITORIA
+CREATE TABLE IF NOT EXISTS public.auditoria_productos(
+	id SERIAL PRIMARY KEY,
+	idProd INT NOT NULL,
+	operacion VARCHAR(10) NOT NULL,
+	fecha TIMESTAMP DEFAULT now(),
+	datos JSONB
+);
+
+SELECT * FROM public.auditoria_productos;
+
+----FUNCION DEL TRIGGER
+CREATE OR REPLACE FUNCTION auditar_productos()
+RETURNS TRIGGER
+AS
+$$
+BEGIN
+    -- Auditar operación de inserción
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO auditoria_productos (idProd, operacion, datos)
+        VALUES (NEW."idProd", 'INSERT', row_to_json(NEW)::JSONB);
+
+    -- Auditar operación de actualización
+    ELSIF TG_OP = 'UPDATE' THEN
+        INSERT INTO auditoria_productos (idProd, operacion, datos)
+        VALUES (NEW."idProd", 'UPDATE', jsonb_build_object('old', row_to_json(OLD), 'new', row_to_json(NEW))::JSONB);
+
+    -- Auditar operación de eliminación
+    ELSIF TG_OP = 'DELETE' THEN
+        INSERT INTO auditoria_productos (idProd, operacion, datos)
+        VALUES (OLD."idProd", 'DELETE', row_to_json(OLD)::JSONB);
+    END IF;
+
+    RETURN NULL; -- No se requiere retornar nada para un trigger AFTER.
+END;
+$$ LANGUAGE plpgsql;
+
+---TRIGGER
+CREATE TRIGGER auditoria_trigger_productos
+AFTER INSERT OR UPDATE OR DELETE
+ON public.productos
+FOR EACH ROW
+EXECUTE FUNCTION auditar_productos();
+DROP TRIGGER auditoria_trigger_productos ON public.productos;
+
+--- 
+---INSERTAR/CREAR/ANADIR
+CREATE OR REPLACE FUNCTION insertar_producto(
+    _nombre CHARACTER VARYING(200),
+    _stock NUMERIC(5, 0),
+    _precio NUMERIC(10, 2),
+    _estado CHARACTER(1),
+    _idcategoria INTEGER,
+    _valorTotal NUMERIC(10, 2)
+)
+RETURNS VOID AS $$
+BEGIN
+    INSERT INTO public.productos (nombre, stock, precio, estado, idcategoria, "valorTotal")
+    VALUES (_nombre, _stock, _precio, _estado, _idcategoria, _valorTotal);
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT insertar_producto('Producto Test', 100, 9.99, 'A', 1, 999.00);
+
+SELECT * FROM productos
+--- 
+---CONSULTAR
+CREATE OR REPLACE FUNCTION consultar_producto(_idProd INTEGER)
+RETURNS TABLE (
+    "idProd" INTEGER,
+    nombre CHARACTER VARYING(200),
+    stock NUMERIC(5, 0),
+    precio NUMERIC(10, 2),
+    estado CHARACTER(1),
+    idcategoria INTEGER,
+    "valorTotal" NUMERIC(10, 2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT p."idProd", p.nombre, p.stock, p.precio, p.estado, p.idcategoria, p."valorTotal"
+    FROM public.productos p
+    WHERE p."idProd" = _idProd;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM consultar_producto(11);
+
+SELECT * FROM productos
+--- 
+---EDITAR
+CREATE OR REPLACE FUNCTION editar_producto(
+    _idProd INTEGER,
+    _nombre CHARACTER VARYING(200),
+    _stock NUMERIC(5, 0),
+    _precio NUMERIC(10, 2),
+    _estado CHARACTER(1),
+    _idcategoria INTEGER,
+    _valorTotal NUMERIC(10, 2)
+)
+RETURNS VOID AS $$
+BEGIN
+    UPDATE public.productos
+    SET nombre = _nombre,
+        stock = _stock,
+        precio = _precio,
+        estado = _estado,
+        idcategoria = _idcategoria,
+        "valorTotal" = _valorTotal
+    WHERE "idProd" = _idProd;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT editar_producto(11, 'Producto Editado', 150, 19.99, 'A', 1, 2998.50);
+
+SELECT * FROM productos
+--- 
+---ELIMINAR
+CREATE OR REPLACE FUNCTION eliminar_producto(_idProd INTEGER)
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM public.productos
+    WHERE "idProd" = _idProd;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT eliminar_producto(11);
+
+SELECT * FROM public.productos p ;
+SELECT * FROM public.auditoria_productos;
